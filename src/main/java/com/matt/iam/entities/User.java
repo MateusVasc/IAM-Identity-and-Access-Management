@@ -21,6 +21,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.Email;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -40,6 +41,7 @@ public class User implements UserDetails {
     @Column(nullable = false, unique = true)
     private String nickname;
 
+    @Email
     @Column(nullable = false, unique = true)
     private String email;
 
