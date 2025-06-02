@@ -21,11 +21,11 @@ services:
     depends_on:
       - postgres
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/meubanco
-      SPRING_DATASOURCE_USERNAME: meuuser
-      SPRING_DATASOURCE_PASSWORD: meusenha
+      SPRING_DATASOURCE_URL: ${POSTGRES_URL}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "8080:8080"
+      - "${APP_PORT}:8080"
     networks:
       - app-network
 
