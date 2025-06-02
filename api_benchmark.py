@@ -1,9 +1,103 @@
 import os
+import uuid
+import time
+import requests
 from dotenv import load_dotenv
 
+def make_dummy_register_body() -> dict:
+    json_body = {}
+
+    json_body['nickname'] = 'dummy_name'
+    json_body['email'] = f"dummy_{uuid.uuid4().hex}@example.com"
+    json_body['password'] = 'Dummy@_pass1234'
+
+    return json_body
+
+
+def make_request(endpoint: str, body: dict, headers: dict = None) -> tuple[float, requests.Response]:
+    match endpoint.split("/")[-1]:
+        case 'register':
+            start = time.perf_counter()
+            resp = requests.post(endpoint, json=body)
+            end = time.perf_counter()
+            
+            return end - start, resp
+        case 'login':
+            start = time.perf_counter()
+            resp = requests.post(endpoint, json=body)
+            end = time.perf_counter()
+            
+            return end - start, resp
+        case 'refresh' | 'logout':
+            start = time.perf_counter()
+            resp = requests.post(endpoint, json=body, headers=headers)
+            end = time.perf_counter()
+
+            return end - start, resp
+        case _:
+            raise KeyError(f"Unsuported endpoint was given: {endpoint}")
+
+
+def average_time(resp_dict: dict, key: str) -> float:
+    resp_arr = resp_dict.get(key)
+    total = sum(resp_arr)
+
+    return total / len(resp_arr)
+
+
+# main
 load_dotenv()
 
 api_base_url = os.environ.get('API_BASE_URL')
-print(api_base_url)
+endpoints = {
+    'register': api_base_url + '/register',
+    'login': api_base_url + '/login',
+    'refresh': api_base_url + '/refresh',
+    'logout': api_base_url + '/logout'
+}
+response_times = {
+    'register': [],
+    'login': [],
+    'refresh': [],
+    'logout': []
+}
 
-# api_base_url = ""
+for _ in range(10):
+    # register
+    body = make_dummy_register_body()
+    elapsed_time, _ = make_request(endpoints['register'], body)
+    response_times['register'].append(elapsed_time)
+
+    # login
+    login_body = {
+        'email': body['email'],
+        'password': body['password']
+    }
+    login_elapsed_time, login_resp = make_request(endpoints['login'], login_body)
+    response_times['login'].append(login_elapsed_time)
+
+    login_data = login_resp.json()
+    refresh_token = login_data.get('refreshToken')
+    access_token = login_data.get('accessToken')
+    headers = {
+        'Authorization': f'Bearer {access_token}'
+    }
+
+    # refresh
+    refresh_body = {
+        'refreshToken': refresh_token
+    }
+    refresh_elapsed_time, _ = make_request(endpoints['refresh'], refresh_body, headers=headers)
+    response_times['refresh'].append(refresh_elapsed_time)
+
+    # logout
+    logout_body = {
+        'refreshToken': refresh_token
+    }
+    logout_elapsed_time, _ = make_request(endpoints['logout'], logout_body, headers=headers)
+    response_times['logout'].append(logout_elapsed_time)
+
+print(f"Tempo médio de resposta para /register: {average_time(response_times, 'register'):.4f} segundos")
+print(f"Tempo médio de resposta para /login: {average_time(response_times, 'login'):.4f} segundos")
+print(f"Tempo médio de resposta para /refresh: {average_time(response_times, 'refresh'):.4f} segundos")
+print(f"Tempo médio de resposta para /logout: {average_time(response_times, 'logout'):.4f} segundos")
