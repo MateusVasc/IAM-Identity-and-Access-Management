@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -47,6 +48,7 @@ public class JwtUtil {
             return JWT.create()
                 .withIssuer("iam-api")
                 .withSubject(user.getEmail())
+                .withJWTId(UUID.randomUUID().toString())
                 .withClaim("roles", collectRoles(user))
                 .withClaim("permissions", collectPermissions(user))
                 .withExpiresAt(generateExpirationDateForRefreshToken())
