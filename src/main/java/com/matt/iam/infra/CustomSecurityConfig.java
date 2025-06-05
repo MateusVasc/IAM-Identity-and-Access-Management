@@ -41,6 +41,7 @@ public class CustomSecurityConfig {
                     authorizeHttp.anyRequest().authenticated();
                 }
             )
+            .logout(logout -> logout.disable())
             .addFilterBefore(jwtCustomFilter, UsernamePasswordAuthenticationFilter.class)
             .build();
     }
