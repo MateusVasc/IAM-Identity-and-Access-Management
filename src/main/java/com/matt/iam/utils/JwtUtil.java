@@ -32,6 +32,7 @@ public class JwtUtil {
             return JWT.create()
                 .withIssuer("iam-api")
                 .withSubject(user.getEmail())
+                .withClaim("type", "access")
                 .withClaim("roles", collectRoles(user))
                 .withClaim("permissions", collectPermissions(user))
                 .withExpiresAt(generateExpirationDateForAccessToken())
@@ -49,8 +50,7 @@ public class JwtUtil {
                 .withIssuer("iam-api")
                 .withSubject(user.getEmail())
                 .withJWTId(UUID.randomUUID().toString())
-                .withClaim("roles", collectRoles(user))
-                .withClaim("permissions", collectPermissions(user))
+                .withClaim("type", "refresh")
                 .withExpiresAt(generateExpirationDateForRefreshToken())
                 .sign(algorithm);
         } catch (JWTCreationException e) {
@@ -111,5 +111,39 @@ public class JwtUtil {
             .map(Permission::getName)
             .distinct()
             .collect(Collectors.toList());
+    }
+
+    public boolean isRefreshToken(String token) {
+        try {
+            Algorithm algorithm = Algorithm.HMAC256(secret);
+            
+            String tokenType = JWT.require(algorithm)
+                .withIssuer("iam-api")
+                .build()
+                .verify(token)
+                .getClaim("type")
+                .asString();
+                
+            return "refresh".equals(tokenType);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public boolean isAccessToken(String token) {
+        try {
+            Algorithm algorithm = Algorithm.HMAC256(secret);
+            
+            String tokenType = JWT.require(algorithm)
+                .withIssuer("iam-api")
+                .build()
+                .verify(token)
+                .getClaim("type")
+                .asString();
+                
+            return tokenType == null || "access".equals(tokenType);
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
