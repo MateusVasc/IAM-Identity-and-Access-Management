@@ -87,7 +87,7 @@ print(f"Tempo médio de resposta para /login: {average_time(response_times, 'log
 print(f"Tempo médio de resposta para /refresh: {average_time(response_times, 'refresh'):.4f} segundos")
 print(f"Tempo médio de resposta para /logout: {average_time(response_times, 'logout'):.4f} segundos")
 
-with open('response_times.csv', mode='w', newline='') as csvfile:
+with open('response_times_post_update.csv', mode='w', newline='') as csvfile:
     writer = csv.writer(csvfile)
     writer.writerow(['iteracao', 'endpoint', 'tempo_resposta'])
     writer.writerows(csv_data)
