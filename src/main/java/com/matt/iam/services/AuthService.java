@@ -9,6 +9,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.matt.iam.dtos.request.LoginRequest;
 import com.matt.iam.dtos.request.RefreshTokenRequest;
@@ -38,6 +39,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
+    private final TokenCleanupService tokenCleanupService;
 
     private static final int MAX_LOGIN_ATTEMPTS = 5;
     private static final int LOCK_TIME_MINUTES = 30;
@@ -65,8 +67,9 @@ public class AuthService {
         this.userRepository.save(user);
     }
 
+    @Transactional
     public LoginResponse login(LoginRequest request) {
-        User user = this.userRepository.findByEmail(request.email())
+        User user = this.userRepository.findByEmailWithRolesAndPermissions(request.email())
                 .orElseThrow(() -> new CustomException(ExceptionMessages.USER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         if (!user.isEnabled()) {
@@ -111,15 +114,15 @@ public class AuthService {
         }
     }
 
+    @Transactional
     public LoginResponse refreshToken(RefreshTokenRequest request) {
-        String oldAccessToken = request.accessToken();
         String email = this.jwtUtil.validateToken(request.refreshToken());
 
         if (email == null) {
             throw new CustomException(ExceptionMessages.INVALID_TOKEN, HttpStatus.FORBIDDEN);
         }
 
-        if (oldAccessToken == null || oldAccessToken.isEmpty()) {
+        if (!this.jwtUtil.isRefreshToken(request.refreshToken())) {
             throw new CustomException(ExceptionMessages.INVALID_TOKEN, HttpStatus.FORBIDDEN);
         }
 
@@ -131,7 +134,7 @@ public class AuthService {
             throw new CustomException(ExceptionMessages.TOKEN_EXPIRED, HttpStatus.FORBIDDEN);
         }
 
-        User user = this.userRepository.findByEmail(email)
+        User user = this.userRepository.findByEmailWithRolesAndPermissions(email)
                 .orElseThrow(() -> new CustomException(ExceptionMessages.USER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         if (!user.isEnabled()) {
@@ -140,15 +143,6 @@ public class AuthService {
 
         if (user.getAccountLockedUntil() != null && user.getAccountLockedUntil().isAfter(LocalDateTime.now())) {
             throw new CustomException(ExceptionMessages.ACCOUNT_LOCKED, HttpStatus.FORBIDDEN);
-        }
-
-        if (!this.blacklistedTokenRepository.existsByToken(oldAccessToken)) {
-            BlacklistedToken accessTokenToRevoke = new BlacklistedToken();
-            accessTokenToRevoke.setToken(oldAccessToken);
-            accessTokenToRevoke.setExpiresAt(jwtUtil.getExpirationDateFromToken(oldAccessToken));
-            accessTokenToRevoke.setRevokedAt(LocalDateTime.now());
-            accessTokenToRevoke.setUser(user);
-            this.blacklistedTokenRepository.save(accessTokenToRevoke);
         }
 
         refreshToken.setIsRevoked(true);
@@ -178,59 +172,46 @@ public class AuthService {
         return new LoginResponse(user.getId(), newAccessToken, newRefreshToken);
     }
 
-    public void logout(RefreshTokenRequest request) {
-        String email = this.jwtUtil.validateToken(request.refreshToken());
-
+    @Transactional
+    public void logout(String accessToken, String refreshToken) {
+        String email = this.jwtUtil.validateToken(accessToken);
+        
         if (email == null) {
             throw new CustomException(ExceptionMessages.INVALID_TOKEN, HttpStatus.FORBIDDEN);
         }
+        
+        if (!this.jwtUtil.isAccessToken(accessToken)) {
+            throw new CustomException(ExceptionMessages.INVALID_TOKEN, HttpStatus.FORBIDDEN);
+        }
 
-        User user = this.userRepository.findByEmail(email)
+        User user = this.userRepository.findByEmailBasic(email)
                 .orElseThrow(() -> new CustomException(ExceptionMessages.USER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
-        RefreshToken token = this.refreshTokenRepository.findByToken(request.refreshToken())
-                .orElseThrow(() -> new CustomException(ExceptionMessages.INVALID_TOKEN, HttpStatus.FORBIDDEN));
-
-        if (!token.getUser().getId().equals(user.getId())) {
-            throw new CustomException(ExceptionMessages.TOKEN_NOT_BELONG_TO_USER, HttpStatus.FORBIDDEN);
-        }
-
-        if (token.getIsRevoked()) {
-            throw new CustomException(ExceptionMessages.TOKEN_WAS_REVOKED, HttpStatus.FORBIDDEN);
-        }
-
-        if (token.getExpiresAt().isBefore(LocalDateTime.now())) {
-            token.setIsRevoked(true);
-            this.refreshTokenRepository.save(token);
-            throw new CustomException(ExceptionMessages.TOKEN_EXPIRED, HttpStatus.FORBIDDEN);
-        }
-
-        token.setIsRevoked(true);
-        token.setLastUsedAt(LocalDateTime.now());
-        this.refreshTokenRepository.save(token);
-
         BlacklistedToken blacklistedToken = new BlacklistedToken();
-        blacklistedToken.setToken(request.accessToken());
-        blacklistedToken.setExpiresAt(jwtUtil.getExpirationDateFromToken(request.accessToken()));
+        blacklistedToken.setToken(accessToken);
+        blacklistedToken.setExpiresAt(jwtUtil.getExpirationDateFromToken(accessToken));
+        blacklistedToken.setRevokedAt(LocalDateTime.now());
         blacklistedToken.setUser(user);
         this.blacklistedTokenRepository.save(blacklistedToken);
 
-        this.cleanupOldTokens(user);
-    }
+        if (refreshToken != null && !refreshToken.isEmpty()) {
+            String refreshEmail = this.jwtUtil.validateToken(refreshToken);
+            
+            if (refreshEmail != null && refreshEmail.equals(email) && this.jwtUtil.isRefreshToken(refreshToken)) {
+                RefreshToken token = this.refreshTokenRepository.findByToken(refreshToken)
+                        .orElse(null);
+                        
+                if (token != null && token.getUser().getId().equals(user.getId()) && !token.getIsRevoked()) {
+                    if (token.getExpiresAt().isAfter(LocalDateTime.now())) {
+                        token.setIsRevoked(true);
+                        token.setLastUsedAt(LocalDateTime.now());
+                        this.refreshTokenRepository.save(token);
+                    }
+                }
+            }
+        }
 
-    private void cleanupOldTokens(User user) {
-        this.refreshTokenRepository.findByUserAndExpiresAtBeforeAndIsRevokedFalse(user, LocalDateTime.now())
-                .forEach(token -> {
-                    token.setIsRevoked(true);
-                    this.refreshTokenRepository.save(token);
-                });
-
-        this.refreshTokenRepository.findByUserAndIsRevokedFalseOrderByCreatedAtDesc(user)
-                .stream()
-                .skip(5)
-                .forEach(token -> {
-                    token.setIsRevoked(true);
-                    this.refreshTokenRepository.save(token);
-                });
+        this.tokenCleanupService.cleanupUserTokensAsync(user);
+        this.tokenCleanupService.cleanupExpiredBlacklistedTokensAsync();
     }
 }
