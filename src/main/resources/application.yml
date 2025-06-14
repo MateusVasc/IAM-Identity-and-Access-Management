@@ -1,0 +1,18 @@
+# Configuração para visualizar cleanup assíncrono
+logging:
+  level:
+    com.matt.iam.services.TokenCleanupService: INFO
+    org.springframework.scheduling: DEBUG
+    root: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# Configuração do thread pool para @Async  
+spring:
+  task:
+    execution:
+      pool:
+        core-size: 2
+        max-size: 4
+        queue-capacity: 100
+      thread-name-prefix: "async-cleanup-" 
