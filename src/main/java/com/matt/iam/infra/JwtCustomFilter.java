@@ -1,13 +1,9 @@
 package com.matt.iam.infra;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -35,12 +31,12 @@ public class JwtCustomFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String token = request.getHeader("Authorization");
 
-        if (token == null || !token.startsWith("Bearer ")) {
+        if (token == null || !token.startsWith("Bearer ") || token.length() <= 7) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        token = token.replace("Bearer ", "");
+        token = token.substring(7);
 
         if (blacklistedTokenRepository.existsByToken(token)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -56,7 +52,13 @@ public class JwtCustomFilter extends OncePerRequestFilter {
             return;
         }
 
-        Optional<User> optUser = this.userRepository.findByEmail(email);
+        if (!this.jwtUtil.isAccessToken(token)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.getWriter().write("Invalid token type");
+            return;
+        }
+
+        Optional<User> optUser = this.userRepository.findByEmailWithRolesAndPermissions(email);
 
         if (optUser.isEmpty()) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -65,16 +67,20 @@ public class JwtCustomFilter extends OncePerRequestFilter {
         }
 
         User user = optUser.get();
-        List<GrantedAuthority> authorities = new ArrayList<>();
 
-        user.getRoles().forEach(role -> 
-            authorities.add(new SimpleGrantedAuthority("ROLE_" + role.getName())));
+        if (!user.isEnabled()) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("Account is disabled");
+            return;
+        }
 
-        user.getRoles().forEach(role -> 
-            role.getPermissions().forEach(per ->
-                authorities.add(new SimpleGrantedAuthority(per.getName()))));
-
-        var authentication = new UsernamePasswordAuthenticationToken(user, null, authorities);
+        if (user.getAccountLockedUntil() != null && user.getAccountLockedUntil().isAfter(java.time.LocalDateTime.now())) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("Account is temporarily locked");
+            return;
+        }
+        
+        var authentication = new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
         filterChain.doFilter(request, response);
