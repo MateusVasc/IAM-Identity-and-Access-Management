@@ -26,22 +26,22 @@ public class TokenCleanupService {
                 try {
             log.info("🧹 [ASYNC] Iniciando limpeza de tokens para usuário: {}", user.getEmail());
             
-            long expiredTokens = this.refreshTokenRepository.findByUserAndExpiresAtBeforeAndIsRevokedFalse(user, LocalDateTime.now())
-                    .stream()
-                    .peek(token -> {
-                        token.setIsRevoked(true);
-                        this.refreshTokenRepository.save(token);
-                    })
-                    .count();
+            var expiredTokensList = this.refreshTokenRepository.findByUserAndExpiresAtBeforeAndIsRevokedFalse(user, LocalDateTime.now());
+            long expiredTokens = expiredTokensList.size();
+            
+            for (var token : expiredTokensList) {
+                token.setIsRevoked(true);
+                this.refreshTokenRepository.save(token);
+            }
 
-            long excessTokens = this.refreshTokenRepository.findByUserAndIsRevokedFalseOrderByCreatedAtDesc(user)
-                    .stream()
-                    .skip(5)
-                    .peek(token -> {
-                        token.setIsRevoked(true);
-                        this.refreshTokenRepository.save(token);
-                    })
-                    .count();
+            var allActiveTokensList = this.refreshTokenRepository.findByUserAndIsRevokedFalseOrderByCreatedAtDesc(user);
+            var excessTokensList = allActiveTokensList.stream().skip(5).toList();
+            long excessTokens = excessTokensList.size();
+            
+            for (var token : excessTokensList) {
+                token.setIsRevoked(true);
+                this.refreshTokenRepository.save(token);
+            }
             
             log.info("✅ [ASYNC] Limpeza concluída: {} tokens expirados, {} tokens em excesso removidos para {}", 
                     expiredTokens, excessTokens, user.getEmail());

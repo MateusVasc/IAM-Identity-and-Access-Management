@@ -8,6 +8,7 @@ class IamApplicationTests {
 
 	@Test
 	void contextLoads() {
+		// Default main test method
 	}
 
 }

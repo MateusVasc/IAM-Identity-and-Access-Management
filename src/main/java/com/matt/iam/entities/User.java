@@ -55,10 +55,10 @@ public class User implements UserDetails {
         joinColumns = @JoinColumn(name = "user_id"),
         inverseJoinColumns = @JoinColumn(name = "role_id")
     )
-    private Set<Role> roles = new HashSet<>();
+    private transient Set<Role> roles = new HashSet<>();
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<RefreshToken> tokens = new HashSet<>();
+    private transient Set<RefreshToken> tokens = new HashSet<>();
 
     @Column(name = "is_enabled", nullable = false)
     private boolean isEnabled = false;

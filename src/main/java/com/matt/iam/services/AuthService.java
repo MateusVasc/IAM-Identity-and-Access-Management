@@ -83,7 +83,7 @@ public class AuthService {
         var usernamePassword = new UsernamePasswordAuthenticationToken(request.email(), request.password());
 
         try {
-            var auth = this.authenticationManager.authenticate(usernamePassword);
+            this.authenticationManager.authenticate(usernamePassword);
 
             user.setFailedLoginAttempts(0);
             user.setLastLoginAt(LocalDateTime.now());
@@ -201,13 +201,12 @@ public class AuthService {
                 RefreshToken token = this.refreshTokenRepository.findByToken(refreshToken)
                         .orElse(null);
                         
-                if (token != null && token.getUser().getId().equals(user.getId()) && !token.getIsRevoked()) {
-                    if (token.getExpiresAt().isAfter(LocalDateTime.now())) {
+                if (token != null && token.getUser().getId().equals(user.getId()) && Boolean.FALSE.equals(token.getIsRevoked()) && token.getExpiresAt().isAfter(LocalDateTime.now())) {
                         token.setIsRevoked(true);
                         token.setLastUsedAt(LocalDateTime.now());
                         this.refreshTokenRepository.save(token);
                     }
-                }
+
             }
         }
 

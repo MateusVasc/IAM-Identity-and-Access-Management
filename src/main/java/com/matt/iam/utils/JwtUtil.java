@@ -5,7 +5,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -22,6 +21,8 @@ import com.matt.iam.exception.ExceptionMessages;
 
 @Service
 public class JwtUtil {
+    private static final String JWT_ISSUER = "iam-api";
+    
     @Value("${jwt.secret.key}")
     private String secret;
 
@@ -30,7 +31,7 @@ public class JwtUtil {
             Algorithm algorithm = Algorithm.HMAC256(secret);
 
             return JWT.create()
-                .withIssuer("iam-api")
+                .withIssuer(JWT_ISSUER)
                 .withSubject(user.getEmail())
                 .withClaim("type", "access")
                 .withClaim("roles", collectRoles(user))
@@ -47,7 +48,7 @@ public class JwtUtil {
             Algorithm algorithm = Algorithm.HMAC256(secret);
 
             return JWT.create()
-                .withIssuer("iam-api")
+                .withIssuer(JWT_ISSUER)
                 .withSubject(user.getEmail())
                 .withJWTId(UUID.randomUUID().toString())
                 .withClaim("type", "refresh")
@@ -63,7 +64,7 @@ public class JwtUtil {
             Algorithm algorithm = Algorithm.HMAC256(secret);
 
             return JWT.require(algorithm)
-                .withIssuer("iam-api")
+                .withIssuer(JWT_ISSUER)
                 .build()
                 .verify(token)
                 .getSubject();
@@ -85,7 +86,7 @@ public class JwtUtil {
             Algorithm algorithm = Algorithm.HMAC256(secret);
 
             return JWT.require(algorithm)
-                .withIssuer("iam-api")
+                .withIssuer(JWT_ISSUER)
                 .build()
                 .verify(token)
                 .getExpiresAt()
@@ -101,7 +102,7 @@ public class JwtUtil {
         return user.getRoles()
             .stream()
             .map(Role::getName)
-            .collect(Collectors.toList());
+            .toList();
     }
 
     private List<String> collectPermissions(User user) {
@@ -110,7 +111,7 @@ public class JwtUtil {
             .flatMap(role -> role.getPermissions().stream())
             .map(Permission::getName)
             .distinct()
-            .collect(Collectors.toList());
+            .toList();
     }
 
     public boolean isRefreshToken(String token) {
@@ -118,7 +119,7 @@ public class JwtUtil {
             Algorithm algorithm = Algorithm.HMAC256(secret);
             
             String tokenType = JWT.require(algorithm)
-                .withIssuer("iam-api")
+                .withIssuer(JWT_ISSUER)
                 .build()
                 .verify(token)
                 .getClaim("type")
@@ -135,7 +136,7 @@ public class JwtUtil {
             Algorithm algorithm = Algorithm.HMAC256(secret);
             
             String tokenType = JWT.require(algorithm)
-                .withIssuer("iam-api")
+                .withIssuer(JWT_ISSUER)
                 .build()
                 .verify(token)
                 .getClaim("type")
